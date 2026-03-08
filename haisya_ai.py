@@ -38,11 +38,11 @@ if f_d and f_s and f_v and f_c:
     c = smart_read(f_c)
 
     try:
-        # 1. 担当データの1列目（担当名/名前/所属など）を「名前」に統一
+        # 1. 担当データの1列目を「名前」に統一
         if c is not None:
             c = c.rename(columns={c.columns[0]: "名前"})
         
-        # 2. 運転手データの合体 (dとsを「氏名」で結合)
+        # 2. 運転手データの合体
         if d is not None and s is not None:
             if "氏名" in d.columns and "氏名" in s.columns:
                 df_drivers = pd.merge(d, s, on="氏名", how="inner")
@@ -60,7 +60,6 @@ if not api_key:
 
 if df_drivers is None:
     st.info("4つのファイルをアップロードしてください。")
-    # 診断表示
     status = {"1.車種": f_d, "2.担当スキル": f_s, "3.車両": f_v, "4.住所": f_c}
     cols = st.columns(4)
     for i, (name, f) in enumerate(status.items()):
@@ -70,35 +69,39 @@ if df_drivers is None:
 st.success("✅ 全データ連携成功！")
 
 # --- 解析実行セクション ---
-line_text = st.text_area("LINEの依頼文を貼り付けてください（例：1980で石井杏奈さん迎え...）", height=200)
+line_text = st.text_area("LINEの依頼文を貼り付けてください", height=200)
 
 if st.button("AI配車シミュレーション実行") and line_text:
-    # --- 修正後のAI呼び出し部分 ---
-try:
-    genai.configure(api_key=api_key)
-    
-    # 余計な文字を入れず、これだけで試してみてください
-    model = genai.GenerativeModel('gemini-1.5-flash')
-    
-    # データをテキスト化
-    v_info = df_vehicles.to_string(index=False)
-    c_info = df_clients.to_string(index=False)
-    
-    prompt = f"""
-    あなたは送迎業界のベテラン配車マンです。
-    【車両リスト】
-    {v_info}
-    【担当住所リスト】
-    {c_info}
-    
-    上記データを元に、次のLINE文を解析して配車計画を立ててください。
-    【LINE文】
-    {line_text}
-    """
-    
-    with st.spinner('ベテラン配車マンが計算中...'):
-        response = model.generate_content(prompt)
-        st.markdown(response.text)
-
-except Exception as e:
-    st.error(f"エラーが発生しました: {e}")
+    # --- ここが修正ポイント（インデントを正しく配置） ---
+    try:
+        genai.configure(api_key=api_key)
+        
+        # モデル名は最もシンプルな指定にします
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        
+        v_info = df_vehicles.to_string(index=False)
+        c_info = df_clients.to_string(index=False)
+        
+        prompt = f"""
+        あなたは送迎業界のベテラン配車マンです。
+        以下の【車両リスト】と【担当住所リスト】を使い、
+        入力された【LINE文】から配車計画を作成してください。
+        
+        【車両リスト】
+        {v_info}
+        
+        【担当住所リスト】
+        {c_info}
+        
+        【LINE文】
+        {line_text}
+        """
+        
+        with st.spinner('ベテラン配車マンが計算中...'):
+            response = model.generate_content(prompt)
+            st.markdown("### 📋 AIの解析結果")
+            st.markdown(response.text)
+            
+    except Exception as e:
+        st.error(f"AI解析中にエラーが発生しました。")
+        st.info(f"詳細: {e}")
