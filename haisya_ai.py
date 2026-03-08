@@ -21,18 +21,20 @@ def smart_read_csv(file):
     if file is None:
         return None
     
-    # 試行するエンコーディングのリスト
+    # 試行するエンコーディングのリスト（優先順位順）
     encodings = ['utf-8-sig', 'utf-8', 'cp932']
     
     for enc in encodings:
         try:
             file.seek(0)
-            # errors='ignore' を入れることで、不正な文字（絵文字など）があってもエラーにせず飛ばす
-            return pd.read_csv(file, encoding=enc, errors='ignore')
+            # 【重要】errors='replace' を指定することで、
+            # 読み取れない絵文字などを「？」に置き換えて、エラーを出さずに読み込みます。
+            return pd.read_csv(file, encoding=enc, errors='replace')
         except Exception:
             continue
             
-    st.error(f"{file.name} の読み込みに失敗しました。文字コードを確認してください。")
+    # 全ての形式で失敗した場合のみエラーを表示
+    st.error(f"{file.name} の読み込みに失敗しました。ファイルが壊れているか、CSV以外の可能性があります。")
     return None
 
 # --- データの読み込みと加工 ---
