@@ -17,14 +17,30 @@ with st.sidebar:
 
 # --- データ処理関数（エラーに強い版） ---
 def load_all_data():
-    # 全てのファイルが揃っていない場合はNoneを返す
     if not (file_drivers and file_vehicles and file_clients):
         return None, None, None
     
+    def smart_read_csv(file):
+        # 1. まずは UTF-8 (絵文字対応) で試す
+        try:
+            # 元の場所に戻してから読み直す
+            file.seek(0)
+            return pd.read_csv(file, encoding="utf-8")
+        except:
+            # 2. 失敗したら Shift-JIS (Excel形式) で試す
+            try:
+                file.seek(0)
+                return pd.read_csv(file, encoding="cp932")
+            except Exception as e:
+                st.error(f"ファイルの読み込みに失敗しました: {e}")
+                return None
+
     try:
-        # 日本語ExcelのCSVに対応（cp932）
         # 1. 運転手リスト
-        raw_drivers = pd.read_csv(file_drivers, encoding="cp932")
+        raw_drivers = smart_read_csv(file_drivers)
+        if raw_drivers is None: return None, None, None
+        
+        # 運転手リストの加工（横並び形式対応）
         car_df = raw_drivers.iloc[:, 0:7].copy()
         car_df.columns = ["氏名", "ミニバン", "BMW", "Gキャビン", "マイクロバス", "LM", "備考"]
         client_skill_df = raw_drivers.iloc[:, 8:].copy()
@@ -33,16 +49,20 @@ def load_all_data():
         df_drivers = pd.merge(car_df.dropna(subset=["氏名"]), client_skill_df, on="氏名", how="inner")
 
         # 2. 車両データ
-        df_vehicles = pd.read_csv(file_vehicles, encoding="cp932")
+        df_vehicles = smart_read_csv(file_vehicles)
         
         # 3. 担当データ
-        df_clients = pd.read_csv(file_clients, encoding="cp932")
+        df_clients = smart_read_csv(file_clients)
         
+        if df_vehicles is None or df_clients is None:
+            return None, None, None
+            
         return df_drivers, df_vehicles, df_clients
+        
     except Exception as e:
-        st.error(f"読み込みエラーが発生しました。ファイルの形式を確認してください: {e}")
+        st.error(f"データ処理中にエラーが発生しました: {e}")
         return None, None, None
-
+        
 # データの読み込み実行
 df_drivers, df_vehicles, df_clients = load_all_data()
 
