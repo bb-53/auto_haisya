@@ -72,37 +72,44 @@ st.success("✅ 全データ連携成功！")
 line_text = st.text_area("LINEの依頼文を貼り付けてください", height=200)
 
 if st.button("AI配車シミュレーション実行") and line_text:
-    # --- ここが修正ポイント（インデントを正しく配置） ---
     try:
+        # 1. APIキーの設定
         genai.configure(api_key=api_key)
         
-        # モデル名は最もシンプルな指定にします
-        # 最も標準的で、最新のAPIキーなら必ず通る名前にします
+        # 2. モデルの指定方法を「最新の正式名」に固定
+        # 404エラーを避けるため、一文字も変えずに記述してください
         model = genai.GenerativeModel('gemini-1.5-flash')
         
+        # 3. データの準備
         v_info = df_vehicles.to_string(index=False)
         c_info = df_clients.to_string(index=False)
         
         prompt = f"""
-        あなたは送迎業界のベテラン配車マンです。
-        以下の【車両リスト】と【担当住所リスト】を使い、
-        入力された【LINE文】から配車計画を作成してください。
-        
-        【車両リスト】
+        あなたは送迎業界のベテラン配車マンです。以下のデータを参照してLINE文を解析してください。
+        【車両データ】:
         {v_info}
-        
-        【担当住所リスト】
+        【担当・住所データ】:
         {c_info}
         
-        【LINE文】
+        【LINE文】:
         {line_text}
         """
         
         with st.spinner('ベテラン配車マンが計算中...'):
+            # 4. 呼び出し（ここが重要：ストリーム形式を避けてシンプルに取得）
             response = model.generate_content(prompt)
-            st.markdown("### 📋 AIの解析結果")
-            st.markdown(response.text)
             
+            if response.text:
+                st.success("解析が完了しました")
+                st.markdown(response.text)
+            else:
+                st.error("AIからの返答が空でした。")
+
     except Exception as e:
-        st.error(f"AI解析中にエラーが発生しました。")
-        st.info(f"詳細: {e}")
+        st.error("AI解析中にエラーが発生しました。")
+        # エラーの内容をより詳しく診断
+        error_msg = str(e)
+        st.info(f"詳細: {error_msg}")
+        
+        if "404" in error_msg:
+            st.warning("⚠️ 解決策: Google AI Studioで『新しいプロジェクト』としてAPIキーを再発行し、貼り直してみてください。")
