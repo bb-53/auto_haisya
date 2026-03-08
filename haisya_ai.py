@@ -76,12 +76,11 @@ if st.button("AI配車シミュレーション実行") and line_text:
     try:
         genai.configure(api_key=api_key)
         
-        # 修正ポイント：'models/' を抜きにして、'-latest' をつける
-        # これが現在、最も確実に呼び出せる名前です
-        model = genai.GenerativeModel('gemini-1.5-flash-latest')
+        # 修正ポイント：最も標準的なこの書き方に変更してみてください
+        model = genai.GenerativeModel('gemini-1.5-flash')
         
-        # もし上記でダメなら、以下を試してください
-        # model = genai.GenerativeModel('gemini-1.5-flash')
+        # もしこれでも同じ404が出る場合は、以下を試してください
+        # model = genai.GenerativeModel('gemini-pro')
         
         v_info = df_vehicles.to_string(index=False)
         c_info = df_clients.to_string(index=False)
