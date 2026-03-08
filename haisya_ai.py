@@ -20,36 +20,35 @@ with st.sidebar:
     st.divider()
     st.info("車番・タレント名・住所を紐付けて解析します")
 
-# --- データ処理関数 ---
+# --- データ処理関数の修正版 ---
 def load_data():
     if not (file_drivers and file_vehicles and file_clients):
         return None, None, None
     
     try:
-        # 1. 運転手リストの処理（横並び形式対応）
-        raw_drivers = pd.read_csv(file_drivers)
-        car_df = raw_drivers.iloc[:, 0:7].copy()
-        car_df.columns = ["氏名", "ミニバン", "BMW", "Gキャビン", "マイクロバス", "LM", "備考"]
-        client_skill_df = raw_drivers.iloc[:, 8:].copy()
-        client_skill_df.columns = client_skill_df.iloc[0]
-        client_skill_df = client_skill_df.drop(client_skill_df.index[0]).dropna(subset=["氏名"])
-        df_drivers = pd.merge(car_df.dropna(subset=["氏名"]), client_skill_df, on="氏名", how="inner")
-
-        # 2. 車両データの処理
-        df_vehicles = pd.read_csv(file_vehicles)
+        # encoding="cp932" を追加することで日本語エラーを回避します
+        # 1. 運転手リスト
+        raw_drivers = pd.read_csv(file_drivers, encoding="cp932")
         
-        # 3. 担当データの処理（タレント名とカテゴリ・住所の辞書化）
-        df_clients = pd.read_csv(file_clients)
+        # ... (中略) ...
+
+        # 2. 車両データ
+        df_vehicles = pd.read_csv(file_vehicles, encoding="cp932")
+        
+        # 3. 担当データ
+        df_clients = pd.read_csv(file_clients, encoding="cp932")
         
         return df_drivers, df_vehicles, df_clients
     except Exception as e:
-        st.error(f"データ読み込みエラー: {e}")
-        return None, None, None
-
-df_drivers, df_vehicles, df_clients = load_data()
-
-if api_key:
-    genai.configure(api_key=api_key)
+        # もし cp932 でもダメな場合は utf-8 も試すようにするとより安全です
+        try:
+            raw_drivers = pd.read_csv(file_drivers, encoding="utf-8")
+            df_vehicles = pd.read_csv(file_vehicles, encoding="utf-8")
+            df_clients = pd.read_csv(file_clients, encoding="utf-8")
+            return load_data_processing(raw_drivers, df_vehicles, df_clients) # 処理部分は共通化
+        except:
+            st.error(f"データ読み込みエラー: {e}")
+            return None, None, None
 
 # --- メイン画面 ---
 if not api_key or df_drivers is None:
