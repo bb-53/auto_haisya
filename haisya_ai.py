@@ -73,33 +73,42 @@ st.success("✅ 全データ連携成功！")
 line_text = st.text_area("LINEの依頼文を貼り付けてください（例：1980で石井杏奈さん迎え...）", height=200)
 
 if st.button("AI配車シミュレーション実行") and line_text:
-    genai.configure(api_key=api_key)
-    model = genai.GenerativeModel('gemini-1.5-flash')
-    
-    # データをテキスト化してAIに渡す
-    v_info = df_vehicles.to_string(index=False)
-    c_info = df_clients.to_string(index=False)
-    
-    prompt = f"""
-    あなたは送迎業界のベテラン配車マンです。
-    以下の【車両リスト】と【担当住所リスト】をマスターデータとして使い、
-    入力された【LINE文】から配車計画を作成してください。
-    
-    【ルール】
-    - 車番から車種を特定してください。
-    - 名前から、送るべき「住所」を特定してください。
-    - 拠点は「中目黒」として、移動時間を含めた拘束時間を予測してください。
-    
-    【車両リスト】
-    {v_info}
-    
-    【担当住所リスト】
-    {c_info}
-    
-    【LINE文】
-    {line_text}
-    """
-    
-    with st.spinner('ベテラン配車マンが計算中...'):
-        response = model.generate_content(prompt)
-        st.markdown(response.text)
+    # APIの設定（最新の書き方に修正）
+    try:
+        genai.configure(api_key=api_key)
+        
+        # モデル名を 'models/gemini-1.5-flash' に明示的に指定
+        model = genai.GenerativeModel('models/gemini-1.5-flash')
+        
+        # データをテキスト化
+        v_info = df_vehicles.to_string(index=False)
+        c_info = df_clients.to_string(index=False)
+        
+        prompt = f"""
+        あなたは送迎業界のベテラン配車マンです。
+        以下の【車両リスト】と【担当住所リスト】を使い、
+        入力された【LINE文】から配車計画を作成してください。
+        
+        【車両リスト】
+        {v_info}
+        
+        【担当住所リスト】
+        {c_info}
+        
+        【LINE文】
+        {line_text}
+        """
+        
+        with st.spinner('ベテラン配車マンが計算中...'):
+            # AIからの回答を取得
+            response = model.generate_content(prompt)
+            
+            # 結果を表示
+            st.markdown("### 📋 AIの解析結果")
+            st.markdown(response.text)
+            
+    except Exception as e:
+        st.error(f"AIとの通信でエラーが発生しました。")
+        st.info("エラー詳細: " + str(e))
+        if "NotFound" in str(e):
+            st.warning("モデル名が見つからないようです。モデル名を 'gemini-1.5-pro' などに変えて試すか、APIキーが有効か確認してください。")
