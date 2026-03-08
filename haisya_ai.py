@@ -16,65 +16,81 @@ with st.sidebar:
     f_v = st.file_uploader("3. 車両マスター", type="csv")
     f_c = st.file_uploader("4. 担当・住所マスター", type="csv")
 
-# --- 頑丈な読み込み関数 ---
 def smart_read_csv(file):
     if file is None: return None
-    encodings = ['utf-8-sig', 'utf-8', 'cp932']
-    for enc in encodings:
+    for enc in ['utf-8-sig', 'utf-8', 'cp932']:
         try:
             file.seek(0)
-            return pd.read_csv(file, encoding=enc, errors='replace')
+            df = pd.read_csv(file, encoding=enc, errors='replace')
+            # 列名の前後の空白を削除しておく
+            df.columns = [str(c).strip() for c in df.columns]
+            return df
         except:
             continue
     return None
 
-# --- 状態チェック用 ---
-files = {"車種スキル": f_d, "担当スキル": f_s, "車両マスター": f_v, "担当マスター": f_c}
-loaded_data = {}
-
-# 個別に読み込み試行
-for name, f in files.items():
-    if f:
-        df = smart_read_csv(f)
-        if df is not None:
-            loaded_data[name] = df
-            st.sidebar.success(f"OK: {name}")
-        else:
-            st.sidebar.error(f"NG: {name} (読み込み失敗)")
-
-# --- データ結合処理 ---
+# --- データの読み込みと自動補正 ---
 df_drivers, df_vehicles, df_clients = None, None, None
 
-if len(loaded_data) == 4:
-    try:
-        d = loaded_data["車種スキル"]
-        s = loaded_data["担当スキル"]
-        # ここで「氏名」という列名が両方のファイルにあるかチェック
-        if "氏名" in d.columns and "氏名" in s.columns:
-            df_drivers = pd.merge(d, s, on="氏名", how="inner")
-            df_vehicles = loaded_data["車両マスター"]
-            df_clients = loaded_data["担当マスター"]
-        else:
-            st.error("エラー：運転手リストの2つのファイル両方に『氏名』という列名が必要です。")
-            st.write("車種スキルの列名:", list(d.columns))
-            st.write("担当スキルの列名:", list(s.columns))
-    except Exception as e:
-        st.error(f"データ結合中に予期せぬエラー: {e}")
+if f_d and f_s and f_v and f_c:
+    d = smart_read_csv(f_d)
+    s = smart_read_csv(f_s)
+    v = smart_read_csv(f_v)
+    c = smart_read_csv(f_c)
 
-# --- 画面表示制御 ---
+    try:
+        # 1. 担当データの項目名を補正（「所属」という列名を「名前」として扱う）
+        if c is not None and "所属" in c.columns and "住所" in c.columns:
+            c = c.rename(columns={"所属": "名前"})
+        
+        # 2. 運転手データの結合（「氏名」でくっつける）
+        if d is not None and s is not None and "氏名" in d.columns and "氏名" in s.columns:
+            df_drivers = pd.merge(d, s, on="氏名", how="inner")
+            # 「運転可能車種（ミニバン）」を「ミニバン」に短縮
+            df_drivers.columns = [c.replace("運転可能車種（", "").replace("）", "") for c in df_drivers.columns]
+            
+            df_vehicles = v
+            df_clients = c
+        else:
+            if d is not None and "氏名" not in d.columns:
+                st.sidebar.error("1のファイルに『氏名』列がありません")
+            if s is not None and "氏名" not in s.columns:
+                st.sidebar.error("2のファイルに『氏名』列がありません")
+    except Exception as e:
+        st.error(f"データ処理エラー: {e}")
+
+# --- 画面表示 ---
 if not api_key:
-    st.warning("サイドバーで Gemini API Key を入力してください。")
+    st.warning("サイドバーで API Key を入力してください")
     st.stop()
 
 if df_drivers is None:
-    st.info("4つのファイルをアップロードしてください。現在、以下のファイルを認識しています：")
-    st.write(list(loaded_data.keys()))
+    st.info("4つのファイルをアップロードしてください。現在ファイルを読み込み中です。")
     st.stop()
 
-st.success("✅ 全データの連携に成功しました！解析を開始できます。")
+st.success("✅ 全データ連携成功！")
 
 # --- 解析セクション ---
 line_text = st.text_area("LINEの依頼文を貼り付けてください", height=200)
-if st.button("AI配車シミュレーション実行"):
-    # ... (解析ロジック)
-    st.write("解析を実行します...")
+if st.button("AI配車シミュレーション実行") and line_text:
+    v_info = df_vehicles.to_string(index=False)
+    c_info = df_clients.to_string(index=False)
+    
+    # AIへの指示（プロンプト）
+    prompt = f"""
+    送迎の配車マンとして、以下のデータを参照しLINE文を解析してください。
+    【車両リスト(車番と車種)】:\n{v_info}
+    【担当・住所リスト(名前と住所)】:\n{c_info}
+    【ルール】:
+    1. 車番から車種を特定
+    2. 名前から住所を特定
+    3. 中目黒拠点の移動時間を考慮して拘束時間を算出
+    【LINE文】:\n{line_text}
+    """
+    
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel('gemini-1.5-flash')
+    
+    with st.spinner('ベテラン配車マンが計算中...'):
+        response = model.generate_content(prompt)
+        st.write(response.text)
