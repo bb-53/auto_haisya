@@ -73,37 +73,32 @@ st.success("✅ 全データ連携成功！")
 line_text = st.text_area("LINEの依頼文を貼り付けてください（例：1980で石井杏奈さん迎え...）", height=200)
 
 if st.button("AI配車シミュレーション実行") and line_text:
-    try:
-        genai.configure(api_key=api_key)
-        
-        # 修正ポイント：最も標準的なこの書き方に変更してみてください
-        model = genai.GenerativeModel('gemini-1.5-flash')
-        
-        # もしこれでも同じ404が出る場合は、以下を試してください
-        # model = genai.GenerativeModel('gemini-pro')
-        
-        v_info = df_vehicles.to_string(index=False)
-        c_info = df_clients.to_string(index=False)
-        
-        prompt = f"""
-        あなたは送迎業界のベテラン配車マンです。
-        以下のデータを参照し、LINE文から配車計画を作成してください。
-        
-        【車両リスト】
-        {v_info}
-        
-        【担当住所リスト】
-        {c_info}
-        
-        【LINE文】
-        {line_text}
-        """
-        
-        with st.spinner('ベテラン配車マンが計算中...'):
-            response = model.generate_content(prompt)
-            st.markdown("### 📋 AIの解析結果")
-            st.markdown(response.text)
-            
-    except Exception as e:
-        st.error(f"AIとの通信でエラーが発生しました。")
-        st.info(f"エラー詳細: {e}")
+    # --- 修正後のAI呼び出し部分 ---
+try:
+    genai.configure(api_key=api_key)
+    
+    # 余計な文字を入れず、これだけで試してみてください
+    model = genai.GenerativeModel('gemini-1.5-flash')
+    
+    # データをテキスト化
+    v_info = df_vehicles.to_string(index=False)
+    c_info = df_clients.to_string(index=False)
+    
+    prompt = f"""
+    あなたは送迎業界のベテラン配車マンです。
+    【車両リスト】
+    {v_info}
+    【担当住所リスト】
+    {c_info}
+    
+    上記データを元に、次のLINE文を解析して配車計画を立ててください。
+    【LINE文】
+    {line_text}
+    """
+    
+    with st.spinner('ベテラン配車マンが計算中...'):
+        response = model.generate_content(prompt)
+        st.markdown(response.text)
+
+except Exception as e:
+    st.error(f"エラーが発生しました: {e}")
