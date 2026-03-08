@@ -19,8 +19,6 @@ with st.sidebar:
 # --- 頑丈な読み込み関数 ---
 def smart_read_csv(file):
     if file is None: return None
-    # 試行するエンコーディングのリスト
-    # utf-8-sig は、今回のエラー(0xef)の直接の解決策です
     encodings = ['utf-8-sig', 'utf-8', 'cp932']
     for enc in encodings:
         try:
@@ -30,39 +28,53 @@ def smart_read_csv(file):
             continue
     return None
 
-def load_data():
-    # 4つのファイルが揃っているか確認
-    if not (f_d and f_s and f_v and f_c): return None, None, None
-    
-    d = smart_read_csv(f_d)
-    s = smart_read_csv(f_s)
-    v = smart_read_csv(f_v)
-    c = smart_read_csv(f_c)
-    
-    if d is not None and s is not None:
-        try:
-            # 運転手とスキルを「氏名」で合体
-            # 前回の修正で1行目を項目名にしたので、シンプルにmergeできます
+# --- 状態チェック用 ---
+files = {"車種スキル": f_d, "担当スキル": f_s, "車両マスター": f_v, "担当マスター": f_c}
+loaded_data = {}
+
+# 個別に読み込み試行
+for name, f in files.items():
+    if f:
+        df = smart_read_csv(f)
+        if df is not None:
+            loaded_data[name] = df
+            st.sidebar.success(f"OK: {name}")
+        else:
+            st.sidebar.error(f"NG: {name} (読み込み失敗)")
+
+# --- データ結合処理 ---
+df_drivers, df_vehicles, df_clients = None, None, None
+
+if len(loaded_data) == 4:
+    try:
+        d = loaded_data["車種スキル"]
+        s = loaded_data["担当スキル"]
+        # ここで「氏名」という列名が両方のファイルにあるかチェック
+        if "氏名" in d.columns and "氏名" in s.columns:
             df_drivers = pd.merge(d, s, on="氏名", how="inner")
-            return df_drivers, v, c
-        except Exception as e:
-            st.error(f"データ結合エラー: {e}")
-            return None, None, None
-    return None, None, None
+            df_vehicles = loaded_data["車両マスター"]
+            df_clients = loaded_data["担当マスター"]
+        else:
+            st.error("エラー：運転手リストの2つのファイル両方に『氏名』という列名が必要です。")
+            st.write("車種スキルの列名:", list(d.columns))
+            st.write("担当スキルの列名:", list(s.columns))
+    except Exception as e:
+        st.error(f"データ結合中に予期せぬエラー: {e}")
 
-df_drivers, df_vehicles, df_clients = load_data()
-
-# --- メイン画面の表示制御 ---
+# --- 画面表示制御 ---
 if not api_key:
-    st.warning("サイドバーに Gemini API Key を入力してください。")
+    st.warning("サイドバーで Gemini API Key を入力してください。")
     st.stop()
 
 if df_drivers is None:
-    st.warning("4つのCSVファイルをすべてアップロードしてください。")
+    st.info("4つのファイルをアップロードしてください。現在、以下のファイルを認識しています：")
+    st.write(list(loaded_data.keys()))
     st.stop()
 
-st.success("✅ 全データの連携に成功しました！")
+st.success("✅ 全データの連携に成功しました！解析を開始できます。")
 
-# --- 解析・シミュレーション (以前のロジック) ---
+# --- 解析セクション ---
 line_text = st.text_area("LINEの依頼文を貼り付けてください", height=200)
-# (以下、解析実行ボタンとGemini連携コード)
+if st.button("AI配車シミュレーション実行"):
+    # ... (解析ロジック)
+    st.write("解析を実行します...")
