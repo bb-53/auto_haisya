@@ -1,49 +1,42 @@
 import streamlit as st
 import google.generativeai as genai
 
-st.set_page_config(page_title="LINE内容整理くん")
-st.title("🚐 LINE依頼内容の整理テスト")
+# ページの設定
+st.set_page_config(page_title="LINE解析テスト")
+st.title("🚐 LINE内容の整理テスト")
 
-# サイドバーでAPIキーだけ入力
+# サイドバーでAPIキーを入力
 with st.sidebar:
     api_key = st.text_input("Gemini API Key", type="password")
 
 if not api_key:
-    st.warning("APIキーを入力してください")
+    st.warning("左側のサイドバーにAPIキーを入力してください。")
     st.stop()
 
 # LINE文の入力
-line_text = st.text_area("LINEの依頼文をここに貼り付けてください", height=200, placeholder="例：3/10 佐藤 10:00〜19:00 現場：渋谷公会堂 車両：1234")
+line_text = st.text_area("LINEの依頼文を貼り付けてください", height=200)
 
-if st.button("内容を整理する"):
+if st.button("内容を整理する") and line_text:
     try:
-        # --- 修正後のモデル呼び出し部分 ---
-　　　　 genai.configure(api_key=api_key)
-
-# 余計な文字を入れず、これだけで指定します
-　　　　 model = genai.GenerativeModel('gemini-1.5-flash')
+        # APIの設定（ここが21行目付近です。半角スペースに修正済み）
+        genai.configure(api_key=api_key)
         
-        # AIへの指示（プロンプト）
+        # 404エラー対策：最もシンプルなモデル名
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        
         prompt = f"""
-        以下のLINEの依頼文から情報を抽出し、指定の項目で一覧（テーブル形式）に整理してください。
-        不明な項目は「不明」と記載してください。
-
-        【抽出項目】
-        ・日付
-        ・名前
-        ・車両（ナンバーや車種）
-        ・稼働時間
-        ・現場住所
-
+        以下のLINE文から情報を抽出し、表形式で整理してください。
+        項目：日付、名前、車両、時間、現場
+        
         【LINE文】
         {line_text}
         """
         
-        with st.spinner('解析中...'):
+        with st.spinner('ベテラン配車マンが解析中...'):
             response = model.generate_content(prompt)
-            st.success("整理完了！")
+            st.success("整理が完了しました！")
             st.markdown(response.text)
             
     except Exception as e:
-        st.error(f"エラーが発生しました: {e}")
-        st.info("※404エラーが出る場合は、APIキーが『新しいプロジェクト』で作成されているか確認してください。")
+        st.error(f"エラーが発生しました。")
+        st.info(f"詳細: {e}")
