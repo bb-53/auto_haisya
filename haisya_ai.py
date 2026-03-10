@@ -3,30 +3,35 @@ import google.generativeai as genai
 import pandas as pd
 import os
 
-st.set_page_config(page_title="育成型・配車デスクAI", layout="wide")
-st.title("🚐 育成型・配車デスクAI")
+# --- 設定と記憶の準備 ---
+KNOWLEDGE_FILE = "haisya_rules.txt"
 
-# --- 1. 記憶（ルール）の管理機能 ---
-KNOWLEDGE_FILE = "log_knowledge.txt"
-
-def load_knowledge():
+def load_rules():
     if os.path.exists(KNOWLEDGE_FILE):
         with open(KNOWLEDGE_FILE, "r", encoding="utf-8") as f:
             return f.read()
-    return "まだ学習したルールはありません。"
+    return "まだ学習した特別なルールはありません。"
 
-def save_knowledge(new_content):
+def save_rule(new_rule):
     with open(KNOWLEDGE_FILE, "a", encoding="utf-8") as f:
-        f.write(f"\n- {new_content}")
+        f.write(f"\n- {new_rule}")
 
-# --- 2. 初期設定とサイドバー ---
+st.set_page_config(page_title="育成型・配車デスクAI", layout="wide")
+st.title("🚐 育成型：自動配車・担当割り振りAI")
+
+# --- サイドバー：データと記憶の確認 ---
 with st.sidebar:
     api_key = st.text_input("Gemini API Key", type="password")
     st.divider()
-    st.write("### 📚 現在の学習済みルール")
-    knowledge = load_knowledge()
-    st.info(knowledge)
-    if st.button("記憶をリセット"):
+    st.write("### 1. マスターデータの準備")
+    up_drivers = st.file_uploader("運転手リスト(CSV)", type="csv")
+    up_mapping = st.file_uploader("担当可能リスト(CSV)", type="csv")
+    up_vehicles = st.file_uploader("車両リスト(CSV)", type="csv")
+    st.divider()
+    st.write("### 📚 学習済みのあなたのこだわり")
+    rules = load_rules()
+    st.info(rules)
+    if st.button("学習したルールをリセット"):
         if os.path.exists(KNOWLEDGE_FILE):
             os.remove(KNOWLEDGE_FILE)
             st.rerun()
@@ -35,48 +40,64 @@ if not api_key:
     st.warning("APIキーを入力してください")
     st.stop()
 
-# --- 3. メイン画面：対話と配車 ---
-if "messages" not in st.session_state:
-    st.session_state.messages = []
+# --- メイン画面：チャット形式への変更 ---
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = []
 
-# チャット履歴の表示
-for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
+# 過去の会話を表示
+for message in st.session_state.chat_history:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
 
-# あなたの指示（プロンプト）入力
-if prompt := st.chat_input("例：『この配車案をベースに、石井さんはMT車NGだから別の車に変えて』"):
-    st.session_state.messages.append({"role": "user", "content": prompt})
+# あなたの入力（依頼内容 または 修正指示）
+if user_input := st.chat_input("依頼内容を貼り付けるか、AIの案に修正を指示してください"):
+    st.session_state.chat_history.append({"role": "user", "content": user_input})
     with st.chat_message("user"):
-        st.markdown(prompt)
+        st.markdown(user_input)
 
     try:
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel('gemini-flash-latest')
         
-        # 過去のルールと会話履歴をコンテキストに含める
-        full_context = f"""
-        あなたはユーザーの配車判断基準を学習中の配車デスクです。
-        以下の【これまでに学んだルール】を絶対守ってください。
+        # 各種CSVの読み込み
+        def get_csv_text(up_file, label):
+            if up_file:
+                df = pd.read_csv(up_file)
+                return f"【{label}】\n{df.to_string(index=False)}\n"
+            return ""
 
-        【これまでに学んだルール】
-        {knowledge}
+        context_data = get_csv_text(up_drivers, "運転手リスト") + \
+                       get_csv_text(up_mapping, "担当可能リスト") + \
+                       get_csv_text(up_vehicles, "車両リスト")
 
-        【ユーザーからの最新の指示】
-        {prompt}
+        # AIへの指示（これまでのルール＋CSV＋今の入力）
+        system_prompt = f"""
+        あなたはユーザー（配車責任者）の好みを学習し、分身となって配車を組むAIです。
+        
+        【これまでの学習内容（優先）】
+        {rules}
+        
+        【基本データ】
+        {context_data}
+        
+        【あなたの任務】
+        1. ユーザーからの入力が依頼であれば、上記データと学習内容に基づき配車を組んでください。
+        2. ユーザーからの入力が「修正指示」であれば、素直に従い、謝罪して案を出し直してください。
+        3. 常に「車種」や「ドライバーの相性」を考慮してください。
         """
         
         with st.chat_message("assistant"):
-            response = model.generate_content(full_context)
+            # 会話履歴を含めて応答を生成
+            response = model.generate_content(system_prompt + "\n\n会話履歴:\n" + str(st.session_state.chat_history))
             st.markdown(response.text)
-            st.session_state.messages.append({"role": "assistant", "content": response.text})
+            st.session_state.chat_history.append({"role": "assistant", "content": response.text})
             
-            # AIに「今教わった新しいルール」を抽出させる（これが学習プロセス）
-            learn_prompt = f"今の会話から、今後も守るべき『配車ルール』だけを一言で抽出して。例：『〇〇さんは大型車NG』。なければ『なし』と答えて。 会話：{prompt} -> {response.text}"
-            new_rule = model.generate_content(learn_prompt).text
-            if "なし" not in new_rule:
-                save_knowledge(new_rule.strip())
-                st.caption(f"✨ 新しいルールを学習しました: {new_rule}")
+            # --- 学習プロセス：今回の会話から「将来のルール」を抽出して保存 ---
+            learn_prompt = f"以下の会話から、ユーザーが今後も守ってほしいと思っている『配車ルール』だけを1つ、簡潔な箇条書きで抽出してください。新しいルールがなければ『なし』とだけ答えてください。会話：{user_input} -> {response.text}"
+            learning_response = model.generate_content(learn_prompt)
+            if "なし" not in learning_response.text:
+                save_rule(learning_response.text.strip())
+                st.toast("新しいルールを学習しました！サイドバーを確認してください。")
 
     except Exception as e:
-        st.error(f"エラー: {e}")
+        st.error(f"エラーが発生しました: {e}")
