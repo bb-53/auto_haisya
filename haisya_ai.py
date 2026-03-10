@@ -19,8 +19,8 @@ if st.button("内容を整理する") and line_text:
     try:
         genai.configure(api_key=api_key)
         
-        # あなたのリストにあった最新の「2.0-flash」を指定します
-        model = genai.GenerativeModel('gemini-2.0-flash')
+        # 'gemini-2.0-flash' をやめて、こちらに変更
+        model = genai.GenerativeModel('gemini-flash-latest')
         
         prompt = f"""
         あなたは送迎業界のプロ配車マンです。
