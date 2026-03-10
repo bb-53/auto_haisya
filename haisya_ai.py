@@ -1,65 +1,82 @@
 import streamlit as st
 import google.generativeai as genai
 import pandas as pd
+import os
 
-st.set_page_config(page_title="プロ配車デスクAI", layout="wide")
-st.title("🚐 自動配車・担当割り振りAI")
+st.set_page_config(page_title="育成型・配車デスクAI", layout="wide")
+st.title("🚐 育成型・配車デスクAI")
 
-# サイドバーで3つのデータを読み込み
+# --- 1. 記憶（ルール）の管理機能 ---
+KNOWLEDGE_FILE = "log_knowledge.txt"
+
+def load_knowledge():
+    if os.path.exists(KNOWLEDGE_FILE):
+        with open(KNOWLEDGE_FILE, "r", encoding="utf-8") as f:
+            return f.read()
+    return "まだ学習したルールはありません。"
+
+def save_knowledge(new_content):
+    with open(KNOWLEDGE_FILE, "a", encoding="utf-8") as f:
+        f.write(f"\n- {new_content}")
+
+# --- 2. 初期設定とサイドバー ---
 with st.sidebar:
     api_key = st.text_input("Gemini API Key", type="password")
     st.divider()
-    st.write("### 1. マスターデータの準備")
-    up_drivers = st.file_uploader("運転手リスト(CSV)", type="csv")
-    up_mapping = st.file_uploader("担当可能リスト(CSV)", type="csv")
-    up_vehicles = st.file_uploader("車両リスト(CSV)", type="csv")
+    st.write("### 📚 現在の学習済みルール")
+    knowledge = load_knowledge()
+    st.info(knowledge)
+    if st.button("記憶をリセット"):
+        if os.path.exists(KNOWLEDGE_FILE):
+            os.remove(KNOWLEDGE_FILE)
+            st.rerun()
 
 if not api_key:
     st.warning("APIキーを入力してください")
     st.stop()
 
-# 依頼文の入力
-st.write("### 2. 本日の稼働依頼を貼り付け")
-line_text = st.text_area("依頼内容（ランペ 1980...など）", height=200)
+# --- 3. メイン画面：対話と配車 ---
+if "messages" not in st.session_state:
+    st.session_state.messages = []
 
-if st.button("担当を割り振り、配車案を作る"):
+# チャット履歴の表示
+for msg in st.session_state.messages:
+    with st.chat_message(msg["role"]):
+        st.markdown(msg["content"])
+
+# あなたの指示（プロンプト）入力
+if prompt := st.chat_input("例：『この配車案をベースに、石井さんはMT車NGだから別の車に変えて』"):
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    with st.chat_message("user"):
+        st.markdown(prompt)
+
     try:
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel('gemini-flash-latest')
         
-        # 各データをテキスト化してAIに読み込ませる準備
-        def get_csv_text(up_file, label):
-            if up_file:
-                df = pd.read_csv(up_file)
-                return f"【{label}】\n{df.to_string(index=False)}\n"
-            return ""
+        # 過去のルールと会話履歴をコンテキストに含める
+        full_context = f"""
+        あなたはユーザーの配車判断基準を学習中の配車デスクです。
+        以下の【これまでに学んだルール】を絶対守ってください。
 
-        context = ""
-        context += get_csv_text(up_drivers, "運転手リスト")
-        context += get_csv_text(up_mapping, "担当可能リスト（現場と運転手の相性）")
-        context += get_csv_text(up_vehicles, "車両リスト")
+        【これまでに学んだルール】
+        {knowledge}
 
-        # AIへの指示（プロンプト）
-        prompt = f"""
-        あなたは送迎会社の経験豊富な配車デスクです。
-        以下の「マスターデータ」に基づき、本日の「依頼内容」に対して最適な運転手と車両を割り当ててください。
-
-        {context}
-
-        【依頼内容】
-        {line_text}
-
-        【割り振りのルール】
-        1. 「担当可能リスト」を最優先してください。特定の現場に指定の運転手がいれば、その人を優先して割り当てます。
-        2. 「車両リスト」を参照し、ナンバーから正確な車種を特定してください。
-        3. 同じ運転手・車両で1日複数回の稼働（中抜き）がある場合、無理のないスケジュールか確認してください。
-        4. もし「担当できる人がいない」または「車両が足りない」場合は、警告を出してください。
+        【ユーザーからの最新の指示】
+        {prompt}
         """
         
-        with st.spinner('最適な組み合わせを計算中...'):
-            response = model.generate_content(prompt)
-            st.success("配車・担当割り振りが完了しました！")
+        with st.chat_message("assistant"):
+            response = model.generate_content(full_context)
             st.markdown(response.text)
+            st.session_state.messages.append({"role": "assistant", "content": response.text})
             
+            # AIに「今教わった新しいルール」を抽出させる（これが学習プロセス）
+            learn_prompt = f"今の会話から、今後も守るべき『配車ルール』だけを一言で抽出して。例：『〇〇さんは大型車NG』。なければ『なし』と答えて。 会話：{prompt} -> {response.text}"
+            new_rule = model.generate_content(learn_prompt).text
+            if "なし" not in new_rule:
+                save_knowledge(new_rule.strip())
+                st.caption(f"✨ 新しいルールを学習しました: {new_rule}")
+
     except Exception as e:
-        st.error(f"エラーが発生しました: {e}")
+        st.error(f"エラー: {e}")
