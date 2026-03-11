@@ -35,6 +35,21 @@ with st.sidebar:
         if os.path.exists(KNOWLEDGE_FILE):
             os.remove(KNOWLEDGE_FILE)
             st.rerun()
+    # ★★★ ここから下を新しく追加してください ★★★
+    st.divider()
+    st.write("### 💾 学習内容のバックアップ")
+    rules = load_rules() # 現在保存されているルールを読み込む
+    
+    # メモ帳に保存するための表示
+    st.text_area("以下の内容をコピーしてメモ帳等に保存しておけば、消えてもすぐ復元できます", rules, height=150)
+    
+    # 消えてしまった時に、手動で一気に書き込むための入力欄
+    manual_restore = st.text_area("復元したいルールをここに貼り付けてください")
+    if st.button("ルールを復元・追加する"):
+        if manual_restore:
+            save_rule(manual_restore)
+            st.success("ルールを復元しました！")
+            st.rerun()
 
 if not api_key:
     st.warning("APIキーを入力してください")
